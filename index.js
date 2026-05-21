@@ -23,8 +23,10 @@ async function run() {
   try {
     await client.connect();
 
+    // database name and collections
     const db = client.db("studyNook");
     const roomCollection = db.collection("rooms");
+    const bookingCollection = db.collection("bookings");
 
     app.get("/room", async (req, res) => {
       const result = await roomCollection.find().toArray();
@@ -60,7 +62,14 @@ async function run() {
     app.delete("/room/:id", async (req, res) => {
       const { id } = req.params;
       const result = await roomCollection.deleteOne({ _id: new ObjectId(id) });
-      res.json(result)
+      res.json(result);
+    });
+
+    app.post("/booking", async (req, res) => {
+      const bookingData = req.body;
+      const result = await bookingCollection.insertOne({ bookingData });
+
+      res.json(result);
     });
 
     await client.db("admin").command({ ping: 1 });
