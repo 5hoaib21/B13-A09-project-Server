@@ -90,7 +90,7 @@ async function run() {
       res.json(result);
     });
 
-    app.delete("/room/:id", async (req, res) => {
+    app.delete("/room/:id", verifyToken, async (req, res) => {
       const { id } = req.params;
       const result = await roomCollection.deleteOne({ _id: new ObjectId(id) });
       res.json(result);
@@ -111,7 +111,7 @@ async function run() {
       res.json(result);
     });
 
-    app.patch("/booking/:bookingId/cancel", async (req, res) => {
+    app.patch("/booking/:bookingId/cancel", verifyToken, async (req, res) => {
       const { bookingId } = req.params;
       console.log(bookingId, "result");
       const result = await bookingCollection.updateOne(
