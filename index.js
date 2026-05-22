@@ -3,6 +3,7 @@ const dotenv = require("dotenv");
 const cors = require("cors");
 
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const { createRemoteJWKSet, jwtVerify } = require("jose-cjs");
 dotenv.config();
 const uri = process.env.MONGODB_URI;
 
@@ -19,6 +20,28 @@ const client = new MongoClient(uri, {
   },
 });
 
+const JWKS = createRemoteJWKSet(new URL("http://localhost:3000/api/auth/jwks"));
+
+const verifyToken = async (req, res, next) => {
+  const header = req?.headers?.authorization;
+
+  if (!header) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  const token = header.split(" ")[1];
+  if (!token) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  try {
+    const { payload } = await jwtVerify(token, JWKS);
+    console.log(payload);
+    next();
+  } catch (error) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+};
+
 async function run() {
   try {
     await client.connect();
@@ -32,22 +55,23 @@ async function run() {
       const result = await roomCollection.find().toArray();
       res.json(result);
     });
-
-    app.post("/room", async (req, res) => {
+    // middleware 1
+    app.post("/room", verifyToken, async (req, res) => {
       const roomData = req.body;
       console.log(roomData);
       const result = await roomCollection.insertOne(roomData);
       res.json(result);
     });
 
-    app.get("/room/:id", async (req, res) => {
+    // middleware for test
+    app.get("/room/:id", verifyToken, async (req, res) => {
       const { id } = req.params;
 
       const result = await roomCollection.findOne({ _id: new ObjectId(id) });
 
       res.json(result);
     });
-    app.get("/myroom/:id", async (req, res) => {
+    app.get("/myroom/:id", verifyToken, async (req, res) => {
       const { id } = req.params;
 
       const result = await roomCollection.find({ userId: id }).toArray();
@@ -78,8 +102,8 @@ async function run() {
 
       res.json(result);
     });
-
-    app.get("/booking/:userId", async (req, res) => {
+    // middleware 2
+    app.get("/booking/:userId", verifyToken, async (req, res) => {
       const { userId } = req.params;
 
       const result = await bookingCollection.find({ userId: userId }).toArray();
