@@ -47,6 +47,13 @@ async function run() {
 
       res.json(result);
     });
+    app.get("/myroom/:id", async (req, res) => {
+      const { id } = req.params;
+
+      const result = await roomCollection.find({ userId: id }).toArray();
+
+      res.json(result);
+    });
 
     app.patch("/room/:id", async (req, res) => {
       const { id } = req.params;
