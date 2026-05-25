@@ -12,6 +12,47 @@ const PORT = process.env.PORT;
 app.use(cors());
 app.use(express.json());
 
+const parseNumber = (value) => {
+  if (value === undefined || value === null || value === "") return undefined;
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+const normalizeAmenities = (value) => {
+  if (!value) return [];
+
+  return (Array.isArray(value) ? value : String(value).split(","))
+    .map((item) => String(item).trim())
+    .filter(Boolean);
+};
+
+const buildRentExpr = (minRent, maxRent) => {
+  const rentValue = {
+    $convert: {
+      input: "$rent",
+      to: "double",
+      onError: null,
+      onNull: null,
+    },
+  };
+
+  const conditions = [];
+
+  if (minRent !== undefined) {
+    conditions.push({ $gte: [rentValue, minRent] });
+  }
+
+  if (maxRent !== undefined) {
+    conditions.push({ $lte: [rentValue, maxRent] });
+  }
+
+  if (conditions.length === 0) return undefined;
+  if (conditions.length === 1) return conditions[0];
+
+  return { $and: conditions };
+};
+
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -53,10 +94,43 @@ async function run() {
     const roomCollection = db.collection("rooms");
     const bookingCollection = db.collection("bookings");
 
-    app.get("/room", async (req, res) => {
-      const result = await roomCollection.find().toArray();
+    const getRooms = async (req, res) => {
+      const { search, amenity, amenities, price, minRent, maxRent } = req.query;
+      const query = {};
+
+      if (typeof search === "string" && search.trim()) {
+        query.room_name = { $regex: search.trim(), $options: "i" };
+      }
+
+      const amenityList = normalizeAmenities(amenities || amenity);
+      if (amenityList.length > 0) {
+        query.amenities = { $in: amenityList };
+      }
+
+      let minValue = parseNumber(minRent);
+      let maxValue = parseNumber(maxRent);
+
+      if (price === "low") {
+        minValue = 0;
+        maxValue = 10;
+      } else if (price === "mid") {
+        minValue = 10;
+        maxValue = 25;
+      } else if (price === "high") {
+        minValue = 25;
+      }
+
+      const rentExpr = buildRentExpr(minValue, maxValue);
+      if (rentExpr) {
+        query.$expr = rentExpr;
+      }
+
+      const result = await roomCollection.find(query).toArray();
       res.json(result);
-    });
+    };
+
+    app.get("/room", getRooms);
+    app.get("/api/rooms", getRooms);
     // middleware 1
     app.post("/room", verifyToken, async (req, res) => {
       const roomData = req.body;
@@ -100,6 +174,26 @@ async function run() {
 
     app.post("/booking", async (req, res) => {
       const bookingData = req.body;
+
+      const { roomId, date, startTime, endTime } = bookingData;
+
+      const verifyTimeSlot = await bookingCollection.findOne({
+        roomId,
+        date,
+        $or: [
+          {
+            startTime: { $lt: endTime },
+            endTime: { $gt: startTime },
+          },
+        ],
+      });
+
+      if (verifyTimeSlot) {
+        return res.status(400).json({
+          message: "This time slot is already booked!",
+        });
+      }
+
       const result = await bookingCollection.insertOne(bookingData);
 
       res.json(result);
